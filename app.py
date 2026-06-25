@@ -63,29 +63,56 @@ st.markdown("""
         margin-bottom: 2rem;
     }
     
+    .cards-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
     .card {
-        background-color: var(--background-color, #FFFFFF);
-        border-radius: 12px;
-        padding: 1.5rem;
+        background: linear-gradient(145deg, var(--background-color, #FFFFFF) 0%, var(--secondary-background-color, #F8F9FA) 100%);
+        border-radius: 16px;
+        padding: 1.75rem;
         border: 1px solid var(--secondary-background-color, #E2E8F0);
+        border-top: 4px solid #8C7AE6;
         color: var(--text-color, #31333F);
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-        margin-bottom: 1.5rem;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025);
         display: flex;
         flex-direction: column;
         justify-content: flex-start;
-        align-items: flex-start;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         height: 100%;
+        position: relative;
+    }
+    
+    .card:hover {
+        transform: translateY(-8px);
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        border-top: 4px solid #5FAEE3;
+    }
+    
+    .card-icon {
+        font-size: 2rem;
+        margin-bottom: 1rem;
+        display: inline-block;
     }
     
     .card h4 {
+        font-family: 'Outfit', sans-serif;
+        font-weight: 600;
         margin-top: 0;
         margin-bottom: 0.75rem;
+        font-size: 1.25rem;
     }
     
     .card p {
+        color: var(--text-color, #718096);
+        font-size: 0.95rem;
+        line-height: 1.6;
         margin-top: 0;
         margin-bottom: 0;
+        flex-grow: 1; /* Pushes content down properly */
     }
     
     .insight-card {
@@ -147,6 +174,47 @@ st.markdown("""
         font-size: 1.8rem;
         font-weight: 700;
         color: #2C4D82;
+    }
+
+    /* Premium Sidebar Styling */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #F8F9FA 0%, #FFFFFF 100%);
+        border-right: 1px solid #E2E8F0;
+        box-shadow: 2px 0 10px rgba(0, 0, 0, 0.02);
+    }
+    
+    [data-testid="stSidebar"] h1, 
+    [data-testid="stSidebar"] h2, 
+    [data-testid="stSidebar"] h3 {
+        font-family: 'Outfit', sans-serif !important;
+        color: #8C7AE6 !important;
+        font-weight: 600;
+    }
+    
+    /* Modernize Selectbox */
+    [data-testid="stSelectbox"] > div[data-baseweb="select"] > div {
+        border-radius: 12px;
+        border: 1px solid #CBD5E0;
+        transition: all 0.2s ease;
+    }
+    [data-testid="stSelectbox"] > div[data-baseweb="select"] > div:hover {
+        border-color: #8C7AE6;
+        box-shadow: 0 0 0 1px #8C7AE6;
+    }
+    
+    /* Premium File Uploader */
+    [data-testid="stFileUploader"] > section {
+        border-radius: 16px;
+        border: 2px dashed #A0AEC0;
+        background-color: #FFFFFF;
+        transition: all 0.3s ease;
+        padding: 1.5rem;
+    }
+    [data-testid="stFileUploader"] > section:hover {
+        border-color: #5FAEE3;
+        background: linear-gradient(145deg, #FFFFFF 0%, #F0F7FA 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(95, 174, 227, 0.15);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -401,13 +469,26 @@ if st.session_state.df is None:
     # Welcome Layout shown when no file is uploaded
     st.info(T[lang_code]["welcome_info"])
     
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown(f'<div class="card" style="height: 100%;"><h4>{T[lang_code]["welcome_1_title"]}</h4><p style="color: var(--text-color, #718096); font-size: 0.9rem;">{T[lang_code]["welcome_1_text"]}</p></div>', unsafe_allow_html=True)
-    with col2:
-        st.markdown(f'<div class="card" style="height: 100%;"><h4>{T[lang_code]["welcome_2_title"]}</h4><p style="color: var(--text-color, #718096); font-size: 0.9rem;">{T[lang_code]["welcome_2_text"]}</p></div>', unsafe_allow_html=True)
-    with col3:
-        st.markdown(f'<div class="card" style="height: 100%;"><h4>{T[lang_code]["welcome_3_title"]}</h4><p style="color: var(--text-color, #718096); font-size: 0.9rem;">{T[lang_code]["welcome_3_text"]}</p></div>', unsafe_allow_html=True)
+    cards_html = f"""
+    <div class="cards-grid">
+        <div class="card">
+            <div class="card-icon">🎯</div>
+            <h4>{T[lang_code]["welcome_1_title"]}</h4>
+            <p>{T[lang_code]["welcome_1_text"]}</p>
+        </div>
+        <div class="card" style="border-top-color: #5FAEE3;">
+            <div class="card-icon">🔒</div>
+            <h4>{T[lang_code]["welcome_2_title"]}</h4>
+            <p>{T[lang_code]["welcome_2_text"]}</p>
+        </div>
+        <div class="card" style="border-top-color: #F6AD55;">
+            <div class="card-icon">✨</div>
+            <h4>{T[lang_code]["welcome_3_title"]}</h4>
+            <p>{T[lang_code]["welcome_3_text"]}</p>
+        </div>
+    </div>
+    """
+    st.markdown(cards_html, unsafe_allow_html=True)
 else:
     # Navigation tabs
     tab_recs, tab_manual, tab_data = st.tabs([
@@ -703,13 +784,13 @@ if footer_logo_src:
     footer_html = f"""
     <div style="display: flex; align-items: center; justify-content: center; gap: 10px; padding: 10px 0; color: #718096; font-size: 0.9rem; font-family: 'Inter', sans-serif;">
         <img src="{footer_logo_src}" style="height: 28px; vertical-align: middle; border-radius: 4px;">
-        <span>{T[lang_code]['developed_by']} <strong>ACVC</strong></span>
+        <span>{T[lang_code]['developed_by']} <a href="https://ana-catalina.com" target="_blank" style="text-decoration: none; color: inherit;"><strong>Ana-Catalina</strong></a></span>
     </div>
     """
 else:
     footer_html = f"""
     <div style="display: flex; align-items: center; justify-content: center; padding: 10px 0; color: #718096; font-size: 0.9rem; font-family: 'Inter', sans-serif;">
-        <span>{T[lang_code]['developed_by']} <strong>ACVC</strong></span>
+        <span>{T[lang_code]['developed_by']} <a href="https://ana-catalina.com" target="_blank" style="text-decoration: none; color: inherit;"><strong>Ana-Catalina</strong></a></span>
     </div>
     """
 st.markdown(footer_html, unsafe_allow_html=True)
