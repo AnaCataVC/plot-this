@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PlotThis | Sugerencia y Generación de Gráficos</title>
+    <!-- Browser tab icon -->
+    <link rel="icon" href="plot-this-icon.png" type="image/png">
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+            background-color: #F8F9FA;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: block;
+        }
+        
+        /* Loader simple en lo que carga Streamlit por debajo */
+        .loader-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #F8F9FA;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: -1; /* Se sitúa detrás del iframe */
+        }
+        
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #2B6CB0;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .loader-text {
+            margin-top: 12px;
+            color: #718096;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loader que se muestra mientras el iframe descarga la app -->
+    <div class="loader-container">
+        <div class="spinner"></div>
+        <div class="loader-text">Cargando PlotThis...</div>
+    </div>
+
+    <!-- 
+      IMPORTANTE:
+      Reemplaza el atributo 'src' de abajo con la URL pública de tu aplicación 
+      cuando la despliegues en Streamlit Community Cloud.
+    -->
+    <iframe src="https://plot-this.streamlit.app/"></iframe>
+</body>
+</html>
