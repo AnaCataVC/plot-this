@@ -75,6 +75,7 @@ st.markdown("""
         flex-direction: column;
         justify-content: flex-start;
         align-items: flex-start;
+        height: 100%;
     }
     
     .card h4 {
