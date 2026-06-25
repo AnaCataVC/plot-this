@@ -52,13 +52,10 @@ st.markdown("""
         -webkit-text-fill-color: transparent;
     }
     
-    /* Hide native Streamlit branding, deploy buttons, toolbar and ViewerBadge */
-    header {visibility: hidden !important;}
-    #MainMenu {visibility: hidden !important;}
-    footer {visibility: hidden !important;}
-    .stDeployButton {display: none !important;}
-    [data-testid="viewerBadge"] {display: none !important;}
-    [data-testid="stDecoration"] {display: none !important;}
+    /* Hide native Streamlit deploy button for clean branding look */
+    .stDeployButton {
+        visibility: hidden;
+    }
     
     .subtitle {
         font-size: 1.1rem;
