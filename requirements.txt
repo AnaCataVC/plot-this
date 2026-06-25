@@ -6,3 +6,4 @@ scipy
 fg-data-profiling
 openpyxl
 pytest
+setuptools
