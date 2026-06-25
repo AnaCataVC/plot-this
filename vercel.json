@@ -2,7 +2,7 @@
   "version": 2,
   "builds": [
     {
-      "src": "*.{html,png}",
+      "src": "*.{html,png,ico}",
       "use": "@vercel/static"
     }
   ]
