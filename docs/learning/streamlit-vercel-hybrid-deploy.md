@@ -41,3 +41,11 @@ A lo largo del proceso, nos topamos con tres bloqueos críticos de infraestructu
 # requirements.txt
 setuptools<81
 ```
+
+### 4. Rechazo Silencioso de Favicons Pesados
+**Problema:** Aunque Vercel sirva correctamente el archivo (retornando HTTP 200), los navegadores modernos ignoran el ícono de la pestaña y muestran un globo terráqueo si la imagen PNG es demasiado grande (ej. un logo original de $>1$ MB).
+**Por qué ocurre:** Los navegadores priorizan el rendimiento del renderizado principal y abortan la decodificación de íconos masivos para evitar bloqueos del hilo de la interfaz.
+**Solución:** Redimensionar siempre los logos a formatos estándar ligeros (`32x32` o `64x64`) y usar preferiblemente el formato `.ico`. Es crucial asegurarse de que la extensión `.ico` esté incluida en el `vercel.json` (como se muestra en el punto 2) y actualizar el HTML:
+```html
+<link rel="icon" href="favicon.ico" type="image/x-icon">
+```
