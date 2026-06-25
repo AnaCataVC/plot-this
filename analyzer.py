@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from ydata_profiling import ProfileReport
+from data_profiling import ProfileReport
 
 def analyze_dataset(df: pd.DataFrame) -> object:
     """

@@ -3,6 +3,6 @@ pandas
 plotly
 numpy
 scipy
-ydata-profiling
+fg-data-profiling
 openpyxl
 pytest
