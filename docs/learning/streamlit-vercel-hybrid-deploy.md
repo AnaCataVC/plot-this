@@ -1,26 +1,26 @@
-# Arquitectura Híbrida: Streamlit Cloud + Vercel
+# Hybrid Architecture: Streamlit Cloud + Vercel
 
-**Fecha:** 2026-06-25
+**Date:** 2026-06-25
 
-## Contexto
-Durante el despliegue del proyecto, optamos por una arquitectura híbrida donde Streamlit Community Cloud sirve como el motor de backend (y renderizado de UI pesado), mientras que Vercel aloja un sitio web estático ultra-rápido que embebe la aplicación mediante un `iframe`. Esto nos permitió usar un dominio personalizado y aislar el frontend estático.
+## Context
+During the project's deployment, we opted for a hybrid architecture where Streamlit Community Cloud serves as the backend engine (and heavy UI renderer), while Vercel hosts an ultra-fast static website that embeds the application via an `iframe`. This allowed us to use a custom domain and isolate the static frontend.
 
-A lo largo del proceso, nos topamos con tres bloqueos críticos de infraestructura que documentamos aquí para futuros despliegues.
+Throughout the process, we encountered several critical infrastructure blockers which we document here for future deployments.
 
-## Lecciones Aprendidas (Gotchas y Soluciones)
+## Lessons Learned (Gotchas & Solutions)
 
-### 1. Bucle de Redirecciones de Streamlit en Iframes
-**Problema:** Al incrustar la URL directa (`https://app.streamlit.app/`) dentro de un iframe en Vercel, el navegador entraba en un bucle de redirecciones infinitas (a menudo arrojando códigos `403` o "Redirigido demasiadas veces").
-**Por qué ocurre:** Streamlit activa mecanismos anti-clickjacking por defecto.
-**Solución:** Es obligatorio anexar el parámetro de consulta `?embedded=true` a la URL del iframe.
+### 1. Streamlit Redirect Loop in Iframes
+**Problem:** When embedding the direct URL (`https://app.streamlit.app/`) inside an iframe in Vercel, the browser entered an infinite redirect loop (often throwing `403` codes or "Redirected you too many times" errors).
+**Why it happens:** Streamlit activates anti-clickjacking security mechanisms by default.
+**Solution:** It is mandatory to append the `?embedded=true` query parameter to the iframe URL.
 ```html
-<!-- Correcto -->
-<iframe src="https://tu-app.streamlit.app/?embedded=true"></iframe>
+<!-- Correct -->
+<iframe src="https://your-app.streamlit.app/?embedded=true"></iframe>
 ```
 
-### 2. Configuración Estática en Vercel (`vercel.json`)
-**Problema:** Vercel detecta automáticamente archivos `.py` y asume que el proyecto usa "Serverless Functions" de Python, rompiendo el despliegue al buscar una variable `app` exportada. Al intentar forzar el comportamiento estático declarando `"src": "index.html"`, Vercel ignora el resto de assets (como favicons `.png` o CSS), resultando en errores 404.
-**Solución:** Se debe usar un arreglo expansivo (wildcards) en el archivo de configuración para incluir todos los assets estáticos.
+### 2. Vercel Static Configuration (`vercel.json`)
+**Problem:** Vercel automatically detects `.py` files and assumes the project uses Python "Serverless Functions", breaking the deployment by searching for an exported `app` variable. When attempting to force static behavior by declaring `"src": "index.html"`, Vercel ignores the rest of the assets (like `.png` favicons or CSS), resulting in 404 errors.
+**Solution:** An expansive array (wildcards) must be used in the configuration file to include all static assets.
 ```json
 {
   "version": 2,
@@ -33,19 +33,19 @@ A lo largo del proceso, nos topamos con tres bloqueos críticos de infraestructu
 }
 ```
 
-### 3. Crash por Dependencias Obsoletas (`pkg_resources`)
-**Problema:** Librerías de datos legacy o no actualizadas recientemente (como `fg-data-profiling` o antiguos forks de `ydata-profiling`) fallan crasheadas en la nube con `ModuleNotFoundError: No module named 'pkg_resources'`.
-**Por qué ocurre:** Las versiones de `setuptools >= 82.0.0` (lanzadas en 2026) eliminaron por completo el módulo `pkg_resources`.
-**Solución:** Se debe fijar la versión de `setuptools` explícitamente en el `requirements.txt` a una versión anterior a la purga, hasta que la librería tercera actualice su código a `importlib.metadata`.
+### 3. Crash due to Obsolete Dependencies (`pkg_resources`)
+**Problem:** Legacy data libraries or those not recently updated (such as `fg-data-profiling` or old forks of `ydata-profiling`) crash in the cloud with `ModuleNotFoundError: No module named 'pkg_resources'`.
+**Why it happens:** Versions of `setuptools >= 82.0.0` (released in 2026) completely removed the `pkg_resources` module.
+**Solution:** The `setuptools` version must be explicitly pinned in `requirements.txt` to a version prior to the purge, until the third-party library updates its code to `importlib.metadata`.
 ```text
 # requirements.txt
 setuptools<81
 ```
 
-### 4. Rechazo Silencioso de Favicons Pesados
-**Problema:** Aunque Vercel sirva correctamente el archivo (retornando HTTP 200), los navegadores modernos ignoran el ícono de la pestaña y muestran un globo terráqueo si la imagen PNG es demasiado grande (ej. un logo original de $>1$ MB).
-**Por qué ocurre:** Los navegadores priorizan el rendimiento del renderizado principal y abortan la decodificación de íconos masivos para evitar bloqueos del hilo de la interfaz.
-**Solución:** Redimensionar siempre los logos a formatos estándar ligeros (`32x32` o `64x64`) y usar preferiblemente el formato `.ico`. Es crucial asegurarse de que la extensión `.ico` esté incluida en el `vercel.json` (como se muestra en el punto 2) y actualizar el HTML:
+### 4. Silent Rejection of Heavy Favicons
+**Problem:** Even though Vercel properly serves the file (returning HTTP 200), modern browsers ignore the tab icon and display a globe if the PNG image is too large (e.g., an original logo $>1$ MB).
+**Why it happens:** Browsers prioritize main rendering performance and abort the decoding of massive icons to prevent blocking the UI thread.
+**Solution:** Always resize logos to lightweight standard formats (`32x32` or `64x64`) and preferably use the `.ico` format. It is crucial to ensure that the `.ico` extension is included in the `vercel.json` (as shown in point 2) and update the HTML:
 ```html
 <link rel="icon" href="favicon.ico" type="image/x-icon">
 ```
