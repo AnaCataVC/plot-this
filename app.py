@@ -2,13 +2,18 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import base64
+import os
 import analyzer
 import recommender
 import styles
 from locales import T
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # Helper function to convert local image to base64 for HTML integration
 def get_base64_image(path):
+    if not os.path.isabs(path):
+        path = os.path.join(BASE_DIR, path)
     with open(path, "rb") as f:
         data = f.read()
     return base64.b64encode(data).decode()
@@ -20,16 +25,17 @@ def render_warning_card(msg):
     st.markdown(f'<div class="warning-card">⚠️ {msg}</div>', unsafe_allow_html=True)
 
 # Page setup and custom configurations using the local PNG file as the browser tab icon
+icon_path = os.path.join(BASE_DIR, "plot-this-icon.png")
 st.set_page_config(
     page_title="PlotThis | Chart Recommender & Sugerencias de Gráficos",
-    page_icon="plot-this-icon.png",
+    page_icon=icon_path if os.path.exists(icon_path) else "plot-this-icon.png",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # Custom CSS injection for Outfit/Inter typography, card margins, and glassmorphic designs
-# Custom CSS injection for Outfit/Inter typography, card margins, and glassmorphic designs
-with open("assets/style.css", "r", encoding="utf-8") as f:
+css_path = os.path.join(BASE_DIR, "assets", "style.css")
+with open(css_path, "r", encoding="utf-8") as f:
     css_content = f.read()
     st.markdown(f"<style>{css_content}</style>", unsafe_allow_html=True)
 
@@ -41,9 +47,6 @@ if "df" not in st.session_state:
     st.session_state.bivariate_insights = None
     st.session_state.file_name = ""
     st.session_state.lang_code = "es"
-
-def run_dataset_profiling(df):
-    return analyzer.analyze_dataset(df)
 
 def process_uploaded_file(uploaded_file, lang_code):
     if uploaded_file.name != st.session_state.file_name:
