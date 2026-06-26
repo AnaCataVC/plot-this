@@ -1,12 +1,11 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.express as px
-import plotly.graph_objects as go
 import base64
 import analyzer
 import recommender
 import styles
+from locales import T
 
 # Helper function to convert local image to base64 for HTML integration
 def get_base64_image(path):
@@ -29,316 +28,20 @@ st.set_page_config(
 )
 
 # Custom CSS injection for Outfit/Inter typography, card margins, and glassmorphic designs
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap');
-    
-    html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
-    }
-    
-    .main-title {
-        font-family: 'Outfit', sans-serif;
-        font-size: 2.8rem;
-        font-weight: 700;
-        margin-bottom: 0.2rem;
-        display: flex;
-        align-items: center;
-    }
-    
-    .main-title-text {
-        background: linear-gradient(90deg, #8C7AE6 0%, #5FAEE3 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }
-    
-    /* Hide native Streamlit deploy button for clean branding look */
-    .stDeployButton {
-        visibility: hidden;
-    }
-    
-    .subtitle {
-        font-size: 1.1rem;
-        color: var(--text-color, #718096);
-        margin-bottom: 2rem;
-    }
-    
-    .cards-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-        gap: 1.5rem;
-        margin-bottom: 2rem;
-    }
+# Custom CSS injection for Outfit/Inter typography, card margins, and glassmorphic designs
+with open("assets/style.css", "r", encoding="utf-8") as f:
+    css_content = f.read()
+    st.markdown(f"<style>{css_content}</style>", unsafe_allow_html=True)
 
-    .card {
-        background: linear-gradient(145deg, var(--background-color, #FFFFFF) 0%, var(--secondary-background-color, #F8F9FA) 100%);
-        border-radius: 16px;
-        padding: 1.75rem;
-        border: 1px solid var(--secondary-background-color, #E2E8F0);
-        border-top: 4px solid #8C7AE6;
-        color: var(--text-color, #31333F);
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025);
-        display: flex;
-        flex-direction: column;
-        justify-content: flex-start;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        height: 100%;
-        position: relative;
-    }
-    
-    .card:hover {
-        transform: translateY(-8px);
-        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-        border-top: 4px solid #5FAEE3;
-    }
-    
-    .card-icon {
-        font-size: 2rem;
-        margin-bottom: 1rem;
-        display: inline-block;
-    }
-    
-    .card h4 {
-        font-family: 'Outfit', sans-serif;
-        font-weight: 600;
-        margin-top: 0;
-        margin-bottom: 0.75rem;
-        font-size: 1.25rem;
-    }
-    
-    .card p {
-        color: var(--text-color, #718096);
-        font-size: 0.95rem;
-        line-height: 1.6;
-        margin-top: 0;
-        margin-bottom: 0;
-        flex-grow: 1; /* Pushes content down properly */
-    }
-    
-    .insight-card {
-        background-color: var(--secondary-background-color, #F8F9FA);
-        border-radius: 12px;
-        padding: 1.25rem;
-        border-left: 5px solid #2C4D82;
-        height: 100%;
-    }
-    
-    .insight-title {
-        font-family: 'Outfit', sans-serif;
-        font-weight: 600;
-        color: #2C4D82;
-        font-size: 1.1rem;
-        margin-bottom: 0.75rem;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-
-    .insight-text {
-        font-size: 0.95rem;
-        color: var(--text-color, #4A5568);
-        line-height: 1.5;
-        margin-bottom: 1rem;
-    }
-
-    .error-card {
-        background-color: var(--secondary-background-color, #FFF5F5);
-        border-radius: 12px;
-        padding: 1.5rem;
-        border-left: 5px solid #E53E3E;
-        color: var(--text-color, #31333F);
-        margin-bottom: 1.5rem;
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        font-weight: 500;
-        font-family: 'Inter', sans-serif;
-    }
-
-    .warning-card {
-        background-color: var(--secondary-background-color, #FFFFF0);
-        border-radius: 12px;
-        padding: 1.5rem;
-        border-left: 5px solid #DD6B20;
-        color: var(--text-color, #31333F);
-        margin-bottom: 1.5rem;
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        font-weight: 500;
-        font-family: 'Inter', sans-serif;
-    }
-    
-    .metric-value {
-        font-family: 'Outfit', sans-serif;
-        font-size: 1.8rem;
-        font-weight: 700;
-        color: #2C4D82;
-    }
-
-    /* Premium Sidebar Styling */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #F8F9FA 0%, #FFFFFF 100%);
-        border-right: 1px solid #E2E8F0;
-        box-shadow: 2px 0 10px rgba(0, 0, 0, 0.02);
-    }
-    
-    [data-testid="stSidebar"] h1, 
-    [data-testid="stSidebar"] h2, 
-    [data-testid="stSidebar"] h3 {
-        font-family: 'Outfit', sans-serif !important;
-        color: #8C7AE6 !important;
-        font-weight: 600;
-    }
-    
-    /* Modernize Selectbox */
-    [data-testid="stSelectbox"] > div[data-baseweb="select"] > div {
-        border-radius: 12px;
-        border: 1px solid #CBD5E0;
-        transition: all 0.2s ease;
-    }
-    [data-testid="stSelectbox"] > div[data-baseweb="select"] > div:hover {
-        border-color: #8C7AE6;
-        box-shadow: 0 0 0 1px #8C7AE6;
-    }
-    
-    /* Premium File Uploader */
-    [data-testid="stFileUploader"] > section {
-        border-radius: 16px;
-        border: 2px dashed #A0AEC0;
-        background-color: #FFFFFF;
-        transition: all 0.3s ease;
-        padding: 1.5rem;
-    }
-    [data-testid="stFileUploader"] > section:hover {
-        border-color: #5FAEE3;
-        background: linear-gradient(145deg, #FFFFFF 0%, #F0F7FA 100%);
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(95, 174, 227, 0.15);
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# Translation dictionary for bilingual support (Spanish and English)
-T = {
-    "es": {
-        "page_title": "PlotThis | Recomendador de Gráficos",
-        "app_title": "PlotThis",
-        "subtitle": "Sugerencia y generación de gráficos premium basados en análisis estadístico determinista",
-        "config": "Configuración",
-        "language": "Idioma / Language",
-        "palette": "Paleta de Colores Visual",
-        "upload_section": "Cargar Dataset",
-        "upload_label": "Sube un archivo CSV o Excel",
-        "upload_help": "El archivo debe contener al menos una columna numérica y cabeceras en la primera fila.",
-        "error_read": "Error al leer el archivo",
-        "column_types": "Modificar Tipos de Columna",
-        "column_types_help": "Modifica la inferencia automática si consideras que es incorrecta:",
-        "welcome_1_title": "100% Determinista",
-        "welcome_1_text": "No usamos modelos de lenguaje (LLM). Las sugerencias e insights se derivan de coeficientes reales (Pearson, IQR, ANOVA) y reglas de visualización de Tableau y Excel.",
-        "welcome_2_title": "Privacidad Total",
-        "welcome_2_text": "El motor estadístico y de renderizado se ejecutan localmente en tu ordenador. Tus datos nunca viajan por internet ni son compartidos.",
-        "welcome_3_title": "Visualizaciones Premium",
-        "welcome_3_text": "Gráficos limpios con Plotly, fuentes Inter, rejillas minimalistas y paletas diseñadas para reportes listos para presentar.",
-        "welcome_info": "Para comenzar, arrastra y suelta un archivo CSV o Excel en el panel izquierdo.",
-        "tab_recs": "Gráficos Recomendados",
-        "tab_manual": "Explorador Manual",
-        "tab_data": "Vista de Datos",
-        "recs_title": "Sugerencias del Motor Estadístico",
-        "recs_subtitle": "Recomendaciones jerarquizadas automáticamente en base a correlaciones e indicadores detectados.",
-        "no_recs": "No se pudieron generar sugerencias. Asegúrate de que el dataset contenga columnas numéricas o categóricas limpias.",
-        "render_error": "No se pudo renderizar este tipo de gráfico.",
-        "render_crit_error": "Error crítico al renderizar",
-        "insight_title": "Insight Estadístico",
-        "dataset_details": "Detalles del Dataset",
-        "manual_title": "Construye tu propio gráfico",
-        "manual_subtitle": "Selecciona las columnas y forzaremos las sugerencias basándonos en sus tipos y características estadísticas.",
-        "axis_x": "Eje X (Variable principal)",
-        "axis_y": "Eje Y (Variable de comparación)",
-        "color_seg": "Segmentar por Color (Categórico)",
-        "none": "Ninguno",
-        "compat_warning": "Esta combinación de tipos de columna no está soportada o no es habitual para visualizaciones estándar.",
-        "suggested_chart_type": "Tipo de Gráfico Sugerido",
-        "manual_stats_title": "Estadísticas de Selección",
-        "var_x": "Variable X",
-        "var_y": "Variable Y",
-        "bivariate_analysis": "Análisis Bivariante",
-        "no_bivariate_detected": "No se detectaron correlaciones o desviaciones lineales notables entre este par de variables.",
-        "data_preview_title": "Vista previa del Dataset",
-        "data_preview_subtitle": "Mostrando las primeras 100 filas de",
-        "summary_table_title": "Tabla resumen de Columnas e Inferencia",
-        "summary_col": "Columna",
-        "summary_inferred": "Tipo Inferido",
-        "summary_orig": "Tipo Original (ydata)",
-        "summary_unique": "Categorías Únicas",
-        "summary_null": "Valores Nulos",
-        "developed_by": "Desarrollado por",
-    },
-    "en": {
-        "page_title": "PlotThis | Chart Recommender",
-        "app_title": "PlotThis",
-        "subtitle": "Premium chart suggestion and generation based on deterministic statistical analysis",
-        "config": "Settings",
-        "language": "Idioma / Language",
-        "palette": "Visual Color Palette",
-        "upload_section": "Upload Dataset",
-        "upload_label": "Upload a CSV or Excel file",
-        "upload_help": "The file must contain at least one numeric column and headers in the first row.",
-        "error_read": "Error reading the file",
-        "column_types": "Modify Column Types",
-        "column_types_help": "Modify automatic inference if you consider it incorrect:",
-        "welcome_1_title": "100% Deterministic",
-        "welcome_1_text": "We do not use language models (LLMs). Suggestions and insights are derived from real coefficients (Pearson, IQR, ANOVA) and visualization rules from Tableau and Excel.",
-        "welcome_2_title": "Total Privacy",
-        "welcome_2_text": "The statistical and rendering engine runs locally on your computer. Your data never travels over the internet nor is it shared.",
-        "welcome_3_title": "Premium Visualizations",
-        "welcome_3_text": "Clean charts with Plotly, Inter fonts, minimalist grids, and palettes designed for presentation-ready reports.",
-        "welcome_info": "To start, drag and drop a CSV or Excel file into the left panel.",
-        "tab_recs": "Recommended Charts",
-        "tab_manual": "Manual Explorer",
-        "tab_data": "Data View",
-        "recs_title": "Statistical Engine Suggestions",
-        "recs_subtitle": "Recommendations automatically ranked based on detected correlations and indicators.",
-        "no_recs": "No suggestions could be generated. Make sure the dataset contains clean numerical or categorical columns.",
-        "render_error": "Could not render this chart type.",
-        "render_crit_error": "Critical rendering error",
-        "insight_title": "Statistical Insight",
-        "dataset_details": "Dataset Details",
-        "manual_title": "Build your own chart",
-        "manual_subtitle": "Select columns and we will force suggestions based on their types and statistical characteristics.",
-        "axis_x": "X Axis (Primary variable)",
-        "axis_y": "Y Axis (Comparison variable)",
-        "color_seg": "Segment by Color (Categorical)",
-        "none": "None",
-        "compat_warning": "This combination of column types is not supported or not standard for standard visualizations.",
-        "suggested_chart_type": "Suggested Chart Type",
-        "manual_stats_title": "Selection Statistics",
-        "var_x": "Variable X",
-        "var_y": "Variable Y",
-        "bivariate_analysis": "Bivariate Analysis",
-        "no_bivariate_detected": "No notable correlations or linear deviations were detected between this pair of variables.",
-        "data_preview_title": "Dataset Preview",
-        "data_preview_subtitle": "Showing the first 100 rows of",
-        "summary_table_title": "Columns and Inference Summary Table",
-        "summary_col": "Column",
-        "summary_inferred": "Inferred Type",
-        "summary_orig": "Original Type (ydata)",
-        "summary_unique": "Unique Categories",
-        "summary_null": "Null Values",
-        "developed_by": "Developed by",
-    }
-}
 
 # Initialize session state variables to cache dataframe computations and overrides
 if "df" not in st.session_state:
     st.session_state.df = None
-    st.session_state.analysis = None
     st.session_state.metadata = None
     st.session_state.bivariate_insights = None
     st.session_state.file_name = ""
     st.session_state.lang_code = "es"
 
-@st.cache_data(show_spinner="Analizando estructura y estadísticas con ydata-profiling...")
 def run_dataset_profiling(df):
     return analyzer.analyze_dataset(df)
 
@@ -362,13 +65,12 @@ with st.sidebar:
     else:
         st.session_state.lang_code = lang_code
         
-    if lang_changed and st.session_state.analysis is not None:
+    if lang_changed and st.session_state.df is not None:
         # Re-extract and translate metadata and bivariate insights
-        st.session_state.metadata = analyzer.extract_metadata(st.session_state.analysis, lang=lang_code)
+        st.session_state.metadata = analyzer.extract_metadata(st.session_state.df, lang=lang_code)
         st.session_state.bivariate_insights = analyzer.calculate_bivariate_insights(
             st.session_state.df, 
             st.session_state.metadata, 
-            st.session_state.analysis, 
             lang=lang_code
         )
     
@@ -396,17 +98,55 @@ with st.sidebar:
                 else:
                     df = pd.read_excel(uploaded_file)
                 
+                # Execute profiling logic first before committing to session state
+                import time
+                
+                with st.spinner(T[lang_code]["spinner_analyzing"]):
+                    t0 = time.time()
+                    
+                    metadata = analyzer.extract_metadata(df, lang=lang_code)
+                    t1 = time.time()
+                    
+                    biv_insights = analyzer.calculate_bivariate_insights(df, metadata, lang=lang_code)
+                    t2 = time.time()
+                    
+                    st.sidebar.info(f"⏱️ **Tiempos de ejecución:**\n\n- Metadata (Pure Pandas): {t1-t0:.2f}s\n- Bivariate: {t2-t1:.2f}s")
+                
+                # If everything succeeds, commit to session state
                 st.session_state.df = df
                 st.session_state.file_name = uploaded_file.name
-                
-                # Execute profiling logic
-                desc = run_dataset_profiling(df)
-                st.session_state.analysis = desc
-                st.session_state.metadata = analyzer.extract_metadata(desc, lang=lang_code)
-                st.session_state.bivariate_insights = analyzer.calculate_bivariate_insights(df, st.session_state.metadata, desc, lang=lang_code)
+                st.session_state.metadata = metadata
+                st.session_state.bivariate_insights = biv_insights
                 
             except Exception as e:
-                render_error_card(f"{T[lang_code]['error_read']}: {e}")
+                import traceback
+                tb = traceback.format_exc()
+                
+                # Reset state if processing failed to avoid partial state corruption
+                st.session_state.df = None
+                st.session_state.file_name = ""
+                st.session_state.metadata = None
+                st.session_state.bivariate_insights = None
+                
+                # Make the error message more user-friendly and explanatory
+                error_str = str(e)
+                if "Errno 22" in error_str or "Invalid argument" in error_str or "BadZipFile" in error_str:
+                    if lang_code == "es":
+                        friendly_desc = f"El archivo Excel parece estar corrupto, protegido por contraseña o tiene un formato no válido. Intenta abrirlo en Excel y guardarlo como un nuevo archivo `.xlsx` o expórtalo como `.csv`.\n\n**Debug Traceback:**\n```\n{tb}\n```"
+                    else:
+                        friendly_desc = f"The Excel file appears to be corrupted, password-protected, or has an invalid format. Try opening it in Excel and saving it as a new `.xlsx` file, or export it as `.csv`.\n\n**Debug Traceback:**\n```\n{tb}\n```"
+                elif "memory" in error_str.lower():
+                    if lang_code == "es":
+                        friendly_desc = "El dataset es demasiado grande para ser procesado por el motor estadístico en la memoria local."
+                    else:
+                        friendly_desc = "The dataset is too large to be processed by the statistical engine in local memory."
+                else:
+                    if lang_code == "es":
+                        friendly_desc = f"Detalle técnico: {error_str}\n\n**Debug Traceback:**\n```\n{tb}\n```"
+                    else:
+                        friendly_desc = f"Technical detail: {error_str}\n\n**Debug Traceback:**\n```\n{tb}\n```"
+                
+                render_error_card(f"{T[lang_code]['error_read']} \n\n {friendly_desc}")
                 
     # Show Column Type Modifier if metadata exists in session
     if st.session_state.metadata is not None:
@@ -442,7 +182,6 @@ with st.sidebar:
                 st.session_state.bivariate_insights = analyzer.calculate_bivariate_insights(
                     st.session_state.df, 
                     updated_metadata, 
-                    st.session_state.analysis,
                     lang=lang_code
                 )
 

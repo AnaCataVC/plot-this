@@ -1,54 +1,43 @@
 import pandas as pd
 import numpy as np
-from data_profiling import ProfileReport
+import sys
+import os
 
-def analyze_dataset(df: pd.DataFrame) -> object:
+def extract_metadata(df: pd.DataFrame, lang: str = "es") -> dict:
     """
-    Runs ydata-profiling in-memory in minimal mode and extracts the
-    complete statistical description object (BaseDescription).
-    """
-    # Execute with minimal=True for maximum in-memory speed
-    profile = ProfileReport(df, minimal=True, progress_bar=False)
-    desc = profile.get_description()
-    return desc
-
-def get_simplified_type(ydata_type: str, cardinality: int) -> str:
-    """
-    Maps semantic types from ydata-profiling to simplified types (Q, N, T)
-    with cardinality coercion for discrete numeric fields.
-    """
-    ydata_type = str(ydata_type).lower()
-    
-    if "numeric" in ydata_type:
-        # Cardinality coercion: if a numeric column has less than 10 unique values,
-        # treat it as Categorical (Nominal) to facilitate aggregate calculations.
-        if cardinality < 10:
-            return "Nominal"
-        return "Quantitative"
-    elif "datetime" in ydata_type:
-        return "Temporal"
-    elif "categorical" in ydata_type or "boolean" in ydata_type:
-        return "Nominal"
-    else:
-        return "Nominal"  # Default type
-
-def extract_metadata(desc: object, lang: str = "es") -> dict:
-    """
-    Parses ydata-profiling's BaseDescription object to extract a clean structure
+    Analyzes the DataFrame directly using pure pandas to extract a clean structure
     of columns, types, and basic univariate insights in the specified language (es/en).
     """
     metadata = {}
-    variables = desc.variables
-    table = desc.table
     
-    for col, info in variables.items():
-        orig_type = info.get("type", "Categorical")
-        n_distinct = info.get("n_distinct", 0)
-        n_missing = info.get("n_missing", 0)
-        p_missing = info.get("p_missing", 0.0)
+    # We sample if the dataset is massive, just for speed, though Pandas is usually fast enough
+    MAX_ROWS = 10000
+    if len(df) > MAX_ROWS:
+        df_sample = df.sample(n=MAX_ROWS, random_state=42)
+    else:
+        df_sample = df
         
-        simple_type = get_simplified_type(orig_type, n_distinct)
+    for col in df_sample.columns:
+        series = df_sample[col]
+        n_missing = int(series.isna().sum())
+        p_missing = float(n_missing / len(df_sample)) if len(df_sample) > 0 else 0.0
+        n_distinct = int(series.nunique(dropna=True))
         
+        # Determine simplified type
+        if pd.api.types.is_numeric_dtype(series):
+            if n_distinct <= 10 and pd.api.types.is_integer_dtype(series):
+                orig_type = "Categorical"
+                simple_type = "Nominal"
+            else:
+                orig_type = "Numeric"
+                simple_type = "Quantitative"
+        elif pd.api.types.is_datetime64_any_dtype(series):
+            orig_type = "DateTime"
+            simple_type = "Temporal"
+        else:
+            orig_type = "Categorical"
+            simple_type = "Nominal"
+            
         col_meta = {
             "name": col,
             "original_type": orig_type,
@@ -59,7 +48,7 @@ def extract_metadata(desc: object, lang: str = "es") -> dict:
             "insights": []
         }
         
-        # Univariate deterministic insights generation
+        # Missing values insight
         if n_missing > 0:
             if lang == "es":
                 col_meta["insights"].append(
@@ -69,96 +58,75 @@ def extract_metadata(desc: object, lang: str = "es") -> dict:
                 col_meta["insights"].append(
                     f"Contains {n_missing} missing values ({p_missing*100:.1f}% of total)."
                 )
-            
+                
         if simple_type == "Quantitative":
-            mean_val = info.get("mean", 0)
-            median_val = info.get("50%", 0)
-            std_val = info.get("std", 0)
-            skewness = info.get("skewness", 0)
-            iqr = info.get("iqr", 0)
+            s_clean = series.dropna()
+            
+            mean_val = float(s_clean.mean()) if not s_clean.empty else 0
+            median_val = float(s_clean.median()) if not s_clean.empty else 0
+            std_val = float(s_clean.std()) if len(s_clean) > 1 else 0
+            skewness = float(s_clean.skew()) if len(s_clean) > 2 else 0
+            min_val = float(s_clean.min()) if not s_clean.empty else 0
+            max_val = float(s_clean.max()) if not s_clean.empty else 0
+            
+            q1 = float(s_clean.quantile(0.25)) if not s_clean.empty else 0
+            q3 = float(s_clean.quantile(0.75)) if not s_clean.empty else 0
+            iqr = q3 - q1
             
             col_meta["stats"] = {
                 "mean": mean_val,
                 "median": median_val,
                 "std": std_val,
-                "min": info.get("min", 0),
-                "max": info.get("max", 0),
+                "min": min_val,
+                "max": max_val,
                 "skewness": skewness,
                 "iqr": iqr
             }
             
-            # Skewness / distribution symmetry insights
+            # Skewness insights
+            if pd.isna(skewness): skewness = 0
             if abs(skewness) < 0.5:
-                if lang == "es":
-                    col_meta["insights"].append(
-                        f"La distribución es relativamente simétrica (sesgo: {skewness:.2f})."
-                    )
-                else:
-                    col_meta["insights"].append(
-                        f"The distribution is relatively symmetric (skewness: {skewness:.2f})."
-                    )
+                if lang == "es": col_meta["insights"].append(f"La distribución es relativamente simétrica (sesgo: {skewness:.2f}).")
+                else: col_meta["insights"].append(f"The distribution is relatively symmetric (skewness: {skewness:.2f}).")
             elif skewness >= 0.5:
-                if lang == "es":
-                    col_meta["insights"].append(
-                        f"La distribución presenta asimetría positiva a la derecha (sesgo: {skewness:.2f}), sugiriendo una concentración en valores más bajos."
-                    )
-                else:
-                    col_meta["insights"].append(
-                        f"The distribution shows positive right skewness (skewness: {skewness:.2f}), suggesting concentration in lower values."
-                    )
+                if lang == "es": col_meta["insights"].append(f"La distribución presenta asimetría positiva a la derecha (sesgo: {skewness:.2f}), sugiriendo una concentración en valores más bajos.")
+                else: col_meta["insights"].append(f"The distribution shows positive right skewness (skewness: {skewness:.2f}), suggesting concentration in lower values.")
             else:
-                if lang == "es":
-                    col_meta["insights"].append(
-                        f"La distribución presenta asimetría negativa a la izquierda (sesgo: {skewness:.2f}), sugiriendo concentración en valores altos."
-                    )
-                else:
-                    col_meta["insights"].append(
-                        f"The distribution shows negative left skewness (skewness: {skewness:.2f}), suggesting concentration in higher values."
-                    )
+                if lang == "es": col_meta["insights"].append(f"La distribución presenta asimetría negativa a la izquierda (sesgo: {skewness:.2f}), sugiriendo concentración en valores altos.")
+                else: col_meta["insights"].append(f"The distribution shows negative left skewness (skewness: {skewness:.2f}), suggesting concentration in higher values.")
                 
-            # Outlier detection using IQR
             if iqr > 0:
-                q1 = info.get("25%", 0)
-                q3 = info.get("75%", 0)
-                lower_bound = q1 - 1.5 * iqr
-                upper_bound = q3 + 1.5 * iqr
-                col_meta["stats"]["outlier_bounds"] = (lower_bound, upper_bound)
+                col_meta["stats"]["outlier_bounds"] = (q1 - 1.5 * iqr, q3 + 1.5 * iqr)
                 
         elif simple_type == "Nominal":
+            s_clean = series.dropna()
+            if not s_clean.empty:
+                counts = s_clean.value_counts()
+                top_val = counts.index[0]
+                freq_val = int(counts.iloc[0])
+            else:
+                top_val = "N/A"
+                freq_val = 0
+                
             col_meta["stats"] = {
-                "top": info.get("top", "N/A"),
-                "freq": info.get("freq", 0),
+                "top": str(top_val),
+                "freq": freq_val,
             }
-            top_val = info.get("top", "N/A")
-            freq_val = info.get("freq", 0)
-            total_obs = table.get("n", 1)
             
-            if freq_val > 0 and total_obs > 0:
-                pct = (freq_val / total_obs) * 100
-                if lang == "es":
-                    col_meta["insights"].append(
-                        f"El valor dominante es **'{top_val}'**, representando el {pct:.1f}% de las filas ({freq_val} apariciones)."
-                    )
-                else:
-                    col_meta["insights"].append(
-                        f"The dominant value is **'{top_val}'**, representing {pct:.1f}% of rows ({freq_val} occurrences)."
-                    )
+            if freq_val > 0 and len(df_sample) > 0:
+                pct = (freq_val / len(df_sample)) * 100
+                if lang == "es": col_meta["insights"].append(f"El valor dominante es **'{top_val}'**, representando el {pct:.1f}% de las filas ({freq_val} apariciones).")
+                else: col_meta["insights"].append(f"The dominant value is **'{top_val}'**, representing {pct:.1f}% of rows ({freq_val} occurrences).")
                 
             if n_distinct > 15:
-                if lang == "es":
-                    col_meta["insights"].append(
-                        f"Alta cardinalidad ({n_distinct} categorías únicas). Se sugiere agrupar categorías menores al graficar."
-                    )
-                else:
-                    col_meta["insights"].append(
-                        f"High cardinality ({n_distinct} unique categories). Suggest grouping smaller categories when plotting."
-                    )
+                if lang == "es": col_meta["insights"].append(f"Alta cardinalidad ({n_distinct} categorías únicas). Se sugiere agrupar categorías menores al graficar.")
+                else: col_meta["insights"].append(f"High cardinality ({n_distinct} unique categories). Suggest grouping smaller categories when plotting.")
                 
         metadata[col] = col_meta
         
     return metadata
 
-def calculate_bivariate_insights(df: pd.DataFrame, metadata: dict, desc: object, lang: str = "es") -> list:
+def calculate_bivariate_insights(df: pd.DataFrame, metadata: dict, lang: str = "es") -> list:
     """
     Analyzes bivariate relations (correlations and group variances)
     to draft explicit statistical insights in Spanish or English.
@@ -213,42 +181,49 @@ def calculate_bivariate_insights(df: pd.DataFrame, metadata: dict, desc: object,
                                 })
 
     # 2. Categorical-Numeric Interaction Analysis
-    for col_name, meta in metadata.items():
-        if meta["type"] == "Nominal":
-            for num_col, num_meta in metadata.items():
-                if num_meta["type"] == "Quantitative":
-                    grouped = df.groupby(col_name)[num_col].agg(["mean", "count"]).dropna()
-                    grouped = grouped[grouped["count"] >= 3]
-                    
-                    if len(grouped) >= 2:
-                        overall_mean = df[num_col].mean()
-                        max_row = grouped.loc[grouped["mean"].idxmax()]
-                        min_row = grouped.loc[grouped["mean"].idxmin()]
-                        
-                        max_cat = grouped["mean"].idxmax()
-                        min_cat = grouped["mean"].idxmin()
-                        
-                        diff_pct = ((max_row["mean"] - min_row["mean"]) / (min_row["mean"] if min_row["mean"] != 0 else 1)) * 100
-                        
-                        if diff_pct >= 15.0:
-                            if lang == "es":
-                                insight_text = (
-                                    f"**Diferencia de '{num_col}' por '{col_name}':** "
-                                    f"La categoría **'{max_cat}'** registra la media más alta de *'{num_col}'* con **{max_row['mean']:.2f}**, "
-                                    f"mientras que **'{min_cat}'** tiene la más baja con **{min_row['mean']:.2f}** "
-                                    f"(una diferencia relativa del {diff_pct:.1f}% entre grupos). El promedio general es {overall_mean:.2f}."
-                                )
-                            else:
-                                insight_text = (
-                                    f"**Difference of '{num_col}' by '{col_name}':** "
-                                    f"Category **'{max_cat}'** registers the highest mean of *'{num_col}'* with **{max_row['mean']:.2f}**, "
-                                    f"while **'{min_cat}'** has the lowest with **{min_row['mean']:.2f}** "
-                                    f"(a relative difference of {diff_pct:.1f}% between groups). The overall average is {overall_mean:.2f}."
-                                )
-                            bivariate_insights.append({
-                                "cols": (col_name, num_col),
-                                "type": "aggregation",
-                                "text": insight_text
-                            })
+    nominal_cols = [col for col, meta in metadata.items() if meta["type"] == "Nominal"]
+    quant_cols = [col for col, meta in metadata.items() if meta["type"] == "Quantitative"]
+    
+    # Cap processing to prevent UI freezing on wide datasets (max 15x15 = 225 combinations)
+    if len(nominal_cols) > 15:
+        nominal_cols = nominal_cols[:15]
+    if len(quant_cols) > 15:
+        quant_cols = quant_cols[:15]
+
+    for col_name in nominal_cols:
+        for num_col in quant_cols:
+            grouped = df.groupby(col_name)[num_col].agg(["mean", "count"]).dropna()
+            grouped = grouped[grouped["count"] >= 3]
+            
+            if len(grouped) >= 2:
+                overall_mean = df[num_col].mean()
+                max_row = grouped.loc[grouped["mean"].idxmax()]
+                min_row = grouped.loc[grouped["mean"].idxmin()]
+                
+                max_cat = grouped["mean"].idxmax()
+                min_cat = grouped["mean"].idxmin()
+                
+                diff_pct = ((max_row["mean"] - min_row["mean"]) / (min_row["mean"] if min_row["mean"] != 0 else 1)) * 100
+                
+                if diff_pct >= 15.0:
+                    if lang == "es":
+                        insight_text = (
+                            f"**Diferencia de '{num_col}' por '{col_name}':** "
+                            f"La categoría **'{max_cat}'** registra la media más alta de *'{num_col}'* con **{max_row['mean']:.2f}**, "
+                            f"mientras que **'{min_cat}'** tiene la más baja con **{min_row['mean']:.2f}** "
+                            f"(una diferencia relativa del {diff_pct:.1f}% entre grupos). El promedio general es {overall_mean:.2f}."
+                        )
+                    else:
+                        insight_text = (
+                            f"**Difference of '{num_col}' by '{col_name}':** "
+                            f"Category **'{max_cat}'** registers the highest mean of *'{num_col}'* with **{max_row['mean']:.2f}**, "
+                            f"while **'{min_cat}'** has the lowest with **{min_row['mean']:.2f}** "
+                            f"(a relative difference of {diff_pct:.1f}% between groups). The overall average is {overall_mean:.2f}."
+                        )
+                    bivariate_insights.append({
+                        "cols": (col_name, num_col),
+                        "type": "aggregation",
+                        "text": insight_text
+                    })
                             
     return bivariate_insights

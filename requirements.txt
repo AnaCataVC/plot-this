@@ -3,7 +3,5 @@ pandas
 plotly
 numpy
 scipy
-fg-data-profiling
 openpyxl
 pytest
-setuptools<81
