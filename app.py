@@ -45,6 +45,51 @@ if "df" not in st.session_state:
 def run_dataset_profiling(df):
     return analyzer.analyze_dataset(df)
 
+def process_uploaded_file(uploaded_file, lang_code):
+    if uploaded_file.name != st.session_state.file_name:
+        try:
+            if uploaded_file.name.endswith(".csv"):
+                df = pd.read_csv(uploaded_file)
+            else:
+                df = pd.read_excel(uploaded_file)
+            
+            with st.spinner(T[lang_code]["spinner_analyzing"]):
+                metadata = analyzer.extract_metadata(df, lang=lang_code)
+                biv_insights = analyzer.calculate_bivariate_insights(df, metadata, lang=lang_code)
+            
+            st.session_state.df = df
+            st.session_state.file_name = uploaded_file.name
+            st.session_state.metadata = metadata
+            st.session_state.bivariate_insights = biv_insights
+            
+            st.rerun()
+            
+            
+        except Exception as e:
+            st.session_state.df = None
+            st.session_state.file_name = ""
+            st.session_state.metadata = None
+            st.session_state.bivariate_insights = None
+            
+            error_str = str(e)
+            if "Errno 22" in error_str or "Invalid argument" in error_str or "BadZipFile" in error_str:
+                if lang_code == "es":
+                    friendly_desc = "El archivo Excel parece estar corrupto, protegido por contraseña o tiene un formato no válido. Intenta abrirlo en Excel y guardarlo como un nuevo archivo `.xlsx` o expórtalo como `.csv`."
+                else:
+                    friendly_desc = "The Excel file appears to be corrupted, password-protected, or has an invalid format. Try opening it in Excel and saving it as a new `.xlsx` file, or export it as `.csv`."
+            elif "memory" in error_str.lower():
+                if lang_code == "es":
+                    friendly_desc = "El dataset es demasiado grande para ser procesado por el motor estadístico en la memoria local."
+                else:
+                    friendly_desc = "The dataset is too large to be processed by the statistical engine in local memory."
+            else:
+                if lang_code == "es":
+                    friendly_desc = f"Detalle técnico: {error_str}"
+                else:
+                    friendly_desc = f"Technical detail: {error_str}"
+            
+            render_error_card(f"{T[lang_code]['error_read']} \n\n {friendly_desc}")
+
 # Sidebar - Uploaders and configuration selectors
 with st.sidebar:
     st.markdown("### Configuración / Settings")
@@ -81,72 +126,18 @@ with st.sidebar:
         index=0
     )
     
-    st.markdown("---")
-    st.markdown(f"### {T[lang_code]['upload_section']}")
-    uploaded_file = st.file_uploader(
-        T[lang_code]["upload_label"],
-        type=["csv", "xlsx", "xls"],
-        help=T[lang_code]["upload_help"]
-    )
-    
-    if uploaded_file is not None:
-        if uploaded_file.name != st.session_state.file_name:
-            try:
-                # Load file depending on file extension
-                if uploaded_file.name.endswith(".csv"):
-                    df = pd.read_csv(uploaded_file)
-                else:
-                    df = pd.read_excel(uploaded_file)
-                
-                # Execute profiling logic first before committing to session state
-                import time
-                
-                with st.spinner(T[lang_code]["spinner_analyzing"]):
-                    t0 = time.time()
-                    
-                    metadata = analyzer.extract_metadata(df, lang=lang_code)
-                    t1 = time.time()
-                    
-                    biv_insights = analyzer.calculate_bivariate_insights(df, metadata, lang=lang_code)
-                    t2 = time.time()
-                    
-                    st.sidebar.info(f"⏱️ **Tiempos de ejecución:**\n\n- Metadata (Pure Pandas): {t1-t0:.2f}s\n- Bivariate: {t2-t1:.2f}s")
-                
-                # If everything succeeds, commit to session state
-                st.session_state.df = df
-                st.session_state.file_name = uploaded_file.name
-                st.session_state.metadata = metadata
-                st.session_state.bivariate_insights = biv_insights
-                
-            except Exception as e:
-                import traceback
-                tb = traceback.format_exc()
-                
-                # Reset state if processing failed to avoid partial state corruption
-                st.session_state.df = None
-                st.session_state.file_name = ""
-                st.session_state.metadata = None
-                st.session_state.bivariate_insights = None
-                
-                # Make the error message more user-friendly and explanatory
-                error_str = str(e)
-                if "Errno 22" in error_str or "Invalid argument" in error_str or "BadZipFile" in error_str:
-                    if lang_code == "es":
-                        friendly_desc = f"El archivo Excel parece estar corrupto, protegido por contraseña o tiene un formato no válido. Intenta abrirlo en Excel y guardarlo como un nuevo archivo `.xlsx` o expórtalo como `.csv`.\n\n**Debug Traceback:**\n```\n{tb}\n```"
-                    else:
-                        friendly_desc = f"The Excel file appears to be corrupted, password-protected, or has an invalid format. Try opening it in Excel and saving it as a new `.xlsx` file, or export it as `.csv`.\n\n**Debug Traceback:**\n```\n{tb}\n```"
-                elif "memory" in error_str.lower():
-                    if lang_code == "es":
-                        friendly_desc = "El dataset es demasiado grande para ser procesado por el motor estadístico en la memoria local."
-                    else:
-                        friendly_desc = "The dataset is too large to be processed by the statistical engine in local memory."
-                else:
-                    if lang_code == "es":
-                        friendly_desc = f"Detalle técnico: {error_str}\n\n**Debug Traceback:**\n```\n{tb}\n```"
-                    else:
-                        friendly_desc = f"Technical detail: {error_str}\n\n**Debug Traceback:**\n```\n{tb}\n```"
-                
-                render_error_card(f"{T[lang_code]['error_read']} \n\n {friendly_desc}")
+    if st.session_state.df is not None:
+        st.markdown("---")
+        st.markdown(f"### {T[lang_code]['upload_section']}")
+        uploaded_file = st.file_uploader(
+            T[lang_code]["upload_label"],
+            type=["csv", "xlsx", "xls"],
+            help=T[lang_code]["upload_help"],
+            key="sidebar_uploader"
+        )
+        
+        if uploaded_file is not None:
+            process_uploaded_file(uploaded_file, lang_code)
                 
     # Show Column Type Modifier if metadata exists in session
     if st.session_state.metadata is not None:
@@ -207,6 +198,17 @@ st.markdown(f'<div class="subtitle">{T[lang_code]["subtitle"]}</div>', unsafe_al
 if st.session_state.df is None:
     # Welcome Layout shown when no file is uploaded
     st.info(T[lang_code]["welcome_info"])
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    uploaded_file_main = st.file_uploader(
+        T[lang_code]["upload_label"],
+        type=["csv", "xlsx", "xls"],
+        help=T[lang_code]["upload_help"],
+        key="main_uploader"
+    )
+    if uploaded_file_main is not None:
+        process_uploaded_file(uploaded_file_main, lang_code)
     
     cards_html = f"""
     <div class="cards-grid">
