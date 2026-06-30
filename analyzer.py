@@ -24,13 +24,12 @@ def extract_metadata(df: pd.DataFrame, lang: str = "es") -> dict:
         n_distinct = int(series.nunique(dropna=True))
         
         # Determine simplified type
+        is_discrete = False
         if pd.api.types.is_numeric_dtype(series):
-            if n_distinct <= 10 and pd.api.types.is_integer_dtype(series):
-                orig_type = "Categorical"
-                simple_type = "Nominal"
-            else:
-                orig_type = "Numeric"
-                simple_type = "Quantitative"
+            orig_type = "Numeric"
+            simple_type = "Quantitative"
+            if n_distinct <= 15:
+                is_discrete = True
         elif pd.api.types.is_datetime64_any_dtype(series):
             orig_type = "DateTime"
             simple_type = "Temporal"
@@ -42,9 +41,11 @@ def extract_metadata(df: pd.DataFrame, lang: str = "es") -> dict:
             "name": col,
             "original_type": orig_type,
             "type": simple_type,
+            "is_discrete": is_discrete,
             "n_distinct": n_distinct,
             "n_missing": n_missing,
             "p_missing": p_missing,
+            "n_rows": len(df_sample),
             "insights": []
         }
         
@@ -135,18 +136,32 @@ def calculate_bivariate_insights(df: pd.DataFrame, metadata: dict, lang: str = "
     
     # 1. Numeric-Numeric Correlation Analysis
     pearson_df = df.corr(method="pearson", numeric_only=True)
+    spearman_df = df.corr(method="spearman", numeric_only=True)
     
-    if pearson_df is not None:
-        numeric_cols = pearson_df.columns.tolist()
-        for i in range(len(numeric_cols)):
-            for j in range(i + 1, len(numeric_cols)):
-                col1 = numeric_cols[i]
-                col2 = numeric_cols[j]
-                
-                if col1 in metadata and col2 in metadata:
-                    if metadata[col1]["type"] == "Quantitative" and metadata[col2]["type"] == "Quantitative":
-                        coef = pearson_df.loc[col1, col2]
-                        if not pd.isna(coef) and abs(coef) >= 0.35:
+    numeric_cols = pearson_df.columns.tolist()
+    for i in range(len(numeric_cols)):
+        for j in range(i + 1, len(numeric_cols)):
+            col1 = numeric_cols[i]
+            col2 = numeric_cols[j]
+            
+            if col1 in metadata and col2 in metadata:
+                if metadata[col1]["type"] == "Quantitative" and metadata[col2]["type"] == "Quantitative":
+                    p_coef = pearson_df.loc[col1, col2]
+                    s_coef = spearman_df.loc[col1, col2]
+                    
+                    p_abs = abs(p_coef) if not pd.isna(p_coef) else 0.0
+                    s_abs = abs(s_coef) if not pd.isna(s_coef) else 0.0
+                    
+                    # Take the stronger signal, detecting non-linearity
+                    is_nonlinear = False
+                    if s_abs > p_abs + 0.15 and s_abs >= 0.35:
+                        coef = s_coef
+                        is_nonlinear = True
+                    else:
+                        coef = p_coef
+                        
+                    coef_abs = abs(coef) if not pd.isna(coef) else 0.0
+                    if coef_abs >= 0.35:
                             sub_df = df[[col1, col2]].dropna()
                             if len(sub_df) > 5:
                                 x = sub_df[col1].values
@@ -155,19 +170,21 @@ def calculate_bivariate_insights(df: pd.DataFrame, metadata: dict, lang: str = "
                                 
                                 if lang == "es":
                                     rel_type = "positiva" if coef > 0 else "negativa"
-                                    force = "muy fuerte" if abs(coef) >= 0.7 else "moderada"
+                                    force = "muy fuerte" if coef_abs >= 0.7 else "moderada"
+                                    line_type = "no lineal monótona" if is_nonlinear else "lineal"
                                     insight_text = (
                                         f"**Relación entre '{col1}' y '{col2}':** "
-                                        f"Existe una correlación lineal {rel_type} {force} ($r = {coef:.2f}$). "
+                                        f"Existe una correlación {line_type} {rel_type} {force} ($r = {coef:.2f}$). "
                                         f"En promedio, por cada unidad que aumenta *'{col1}'*, *'{col2}'* tiende a "
                                         f"{'aumentar' if slope > 0 else 'disminuir'} en **{abs(slope):.2f}** unidades."
                                     )
                                 else:
                                     rel_type = "positive" if coef > 0 else "negative"
-                                    force = "very strong" if abs(coef) >= 0.7 else "moderate"
+                                    force = "very strong" if coef_abs >= 0.7 else "moderate"
+                                    line_type = "monotonic non-linear" if is_nonlinear else "linear"
                                     insight_text = (
                                         f"**Relationship between '{col1}' and '{col2}':** "
-                                        f"There is a {force} {rel_type} linear correlation ($r = {coef:.2f}$). "
+                                        f"There is a {force} {rel_type} {line_type} correlation ($r = {coef:.2f}$). "
                                         f"On average, for each unit that *'{col1}'* increases, *'{col2}'* tends to "
                                         f"{'increase' if slope > 0 else 'decrease'} by **{abs(slope):.2f}** units."
                                     )
@@ -175,16 +192,17 @@ def calculate_bivariate_insights(df: pd.DataFrame, metadata: dict, lang: str = "
                                     "cols": (col1, col2),
                                     "type": "correlation",
                                     "r": coef,
+                                    "is_nonlinear": is_nonlinear,
                                     "slope": slope,
                                     "intercept": intercept,
                                     "text": insight_text
                                 })
 
-    # 2. Categorical-Numeric Interaction Analysis
-    nominal_cols = [col for col, meta in metadata.items() if meta["type"] == "Nominal"]
-    quant_cols = [col for col, meta in metadata.items() if meta["type"] == "Quantitative"]
+    # 2. Categorical-Numeric Interaction Analysis (includes Nominal and Discrete Quantitative)
+    nominal_cols = [col for col, meta in metadata.items() if meta["type"] == "Nominal" or meta.get("is_discrete", False)]
+    quant_cols = [col for col, meta in metadata.items() if meta["type"] == "Quantitative" and not meta.get("is_discrete", False)]
     
-    # Cap processing to prevent UI freezing on wide datasets (max 15x15 = 225 combinations)
+    # Cap processing to prevent UI freezing on wide datasets
     if len(nominal_cols) > 15:
         nominal_cols = nominal_cols[:15]
     if len(quant_cols) > 15:
@@ -193,37 +211,39 @@ def calculate_bivariate_insights(df: pd.DataFrame, metadata: dict, lang: str = "
     for col_name in nominal_cols:
         for num_col in quant_cols:
             grouped = df.groupby(col_name)[num_col].agg(["mean", "count"]).dropna()
-            grouped = grouped[grouped["count"] >= 3]
+            grouped = grouped[grouped["count"] >= 5]
             
             if len(grouped) >= 2:
-                overall_mean = df[num_col].mean()
-                max_row = grouped.loc[grouped["mean"].idxmax()]
-                min_row = grouped.loc[grouped["mean"].idxmin()]
-                
-                max_cat = grouped["mean"].idxmax()
-                min_cat = grouped["mean"].idxmin()
-                
-                diff_pct = ((max_row["mean"] - min_row["mean"]) / (min_row["mean"] if min_row["mean"] != 0 else 1)) * 100
-                
-                if diff_pct >= 15.0:
-                    if lang == "es":
-                        insight_text = (
-                            f"**Diferencia de '{num_col}' por '{col_name}':** "
-                            f"La categoría **'{max_cat}'** registra la media más alta de *'{num_col}'* con **{max_row['mean']:.2f}**, "
-                            f"mientras que **'{min_cat}'** tiene la más baja con **{min_row['mean']:.2f}** "
-                            f"(una diferencia relativa del {diff_pct:.1f}% entre grupos). El promedio general es {overall_mean:.2f}."
-                        )
-                    else:
-                        insight_text = (
-                            f"**Difference of '{num_col}' by '{col_name}':** "
-                            f"Category **'{max_cat}'** registers the highest mean of *'{num_col}'* with **{max_row['mean']:.2f}**, "
-                            f"while **'{min_cat}'** has the lowest with **{min_row['mean']:.2f}** "
-                            f"(a relative difference of {diff_pct:.1f}% between groups). The overall average is {overall_mean:.2f}."
-                        )
-                    bivariate_insights.append({
-                        "cols": (col_name, num_col),
-                        "type": "aggregation",
-                        "text": insight_text
-                    })
+                global_std = df[num_col].std()
+                if pd.notna(global_std) and global_std > 0:
+                    max_row = grouped.loc[grouped["mean"].idxmax()]
+                    min_row = grouped.loc[grouped["mean"].idxmin()]
+                    
+                    max_cat = grouped["mean"].idxmax()
+                    min_cat = grouped["mean"].idxmin()
+                    
+                    effect_size = abs(max_row["mean"] - min_row["mean"]) / global_std
+                    
+                    if effect_size >= 0.5:
+                        overall_mean = df[num_col].mean()
+                        if lang == "es":
+                            insight_text = (
+                                f"**Diferencia de '{num_col}' por '{col_name}':** "
+                                f"La categoría **'{max_cat}'** registra la media más alta de *'{num_col}'* con **{max_row['mean']:.2f}**, "
+                                f"mientras que **'{min_cat}'** tiene la más baja con **{min_row['mean']:.2f}** "
+                                f"(tamaño del efecto d = {effect_size:.2f}). El promedio general es {overall_mean:.2f}."
+                            )
+                        else:
+                            insight_text = (
+                                f"**Difference of '{num_col}' by '{col_name}':** "
+                                f"Category **'{max_cat}'** registers the highest mean of *'{num_col}'* with **{max_row['mean']:.2f}**, "
+                                f"while **'{min_cat}'** has the lowest with **{min_row['mean']:.2f}** "
+                                f"(effect size d = {effect_size:.2f}). The overall average is {overall_mean:.2f}."
+                            )
+                        bivariate_insights.append({
+                            "cols": (col_name, num_col),
+                            "type": "aggregation",
+                            "text": insight_text
+                        })
                             
     return bivariate_insights
