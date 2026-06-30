@@ -302,6 +302,14 @@ else:
                                 counts = st.session_state.df[x_col].value_counts().reset_index()
                                 counts.columns = [x_col, "Proporción" if lang_code == "es" else "Proportion"]
                                 fig = px.pie(counts, names=x_col, values="Proporción" if lang_code == "es" else "Proportion")
+                            elif chart_type == "density_heatmap":
+                                fig = px.density_heatmap(
+                                    st.session_state.df,
+                                    x=x_col,
+                                    y=y_col,
+                                    marginal_x="histogram",
+                                    marginal_y="histogram"
+                                )
                                 
                             if fig is not None:
                                 fig = styles.apply_premium_style(fig, title, selected_theme)

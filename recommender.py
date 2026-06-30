@@ -12,26 +12,50 @@ def recommend_charts(metadata: dict, bivariate_insights: list, lang: str = "es")
             col1, col2 = insight["cols"]
             r_val = insight["r"]
             abs_r = abs(r_val)
+            is_nonlinear = insight.get("is_nonlinear", False)
             
-            priority = int(80 + (abs_r * 20))
+            # Fetch sample size from metadata
+            n_rows = metadata[col1].get("n_rows", 0)
             
-            if lang == "es":
-                title_text = f"Relación entre {col1} y {col2}"
-                rationale_text = (
-                    f"Existe una correlación lineal {'positiva' if r_val > 0 else 'negativa'} "
-                    f"{'muy fuerte' if abs_r >= 0.7 else 'moderada'} ($r = {r_val:.2f}$) entre ambas variables. "
-                    f"El gráfico de dispersión con recta de regresión permite visualizar la tendencia directamente."
-                )
+            if n_rows > 5000:
+                chart_type = "density_heatmap"
+                priority = int(85 + (abs_r * 15))
+                if lang == "es":
+                    title_text = f"Densidad y Relación entre {col1} y {col2}"
+                    rationale_text = (
+                        f"Existe una correlación {'no lineal' if is_nonlinear else 'lineal'} "
+                        f"{'muy fuerte' if abs_r >= 0.7 else 'moderada'} ($r = {r_val:.2f}$). "
+                        f"Dado que el conjunto posee más de 5,000 registros ({n_rows}), se sugiere un mapa de calor "
+                        f"de densidad para evitar la sobreposición de puntos (overplotting)."
+                    )
+                else:
+                    title_text = f"Density and Relation between {col1} and {col2}"
+                    rationale_text = (
+                        f"There is a {'very strong' if abs_r >= 0.7 else 'moderate'} "
+                        f"{'non-linear' if is_nonlinear else 'linear'} correlation ($r = {r_val:.2f}$). "
+                        f"Since the dataset has more than 5,000 rows ({n_rows}), a density heatmap "
+                        f"is recommended to prevent overplotting."
+                    )
             else:
-                title_text = f"Relationship between {col1} and {col2}"
-                rationale_text = (
-                    f"There is a {'very strong' if abs_r >= 0.7 else 'moderate'} "
-                    f"{'positive' if r_val > 0 else 'negative'} linear correlation ($r = {r_val:.2f}$) between both variables. "
-                    f"The scatter plot with regression line allows direct visualization of the trend."
-                )
+                chart_type = "scatter"
+                priority = int(80 + (abs_r * 20))
+                if lang == "es":
+                    title_text = f"Relación entre {col1} y {col2}"
+                    rationale_text = (
+                        f"Existe una correlación {'no lineal monótona' if is_nonlinear else 'lineal'} "
+                        f"{'muy fuerte' if abs_r >= 0.7 else 'moderada'} ($r = {r_val:.2f}$) entre ambas variables. "
+                        f"El gráfico de dispersión con recta de regresión permite visualizar la tendencia directamente."
+                    )
+                else:
+                    title_text = f"Relationship between {col1} and {col2}"
+                    rationale_text = (
+                        f"There is a {'very strong' if abs_r >= 0.7 else 'moderate'} "
+                        f"{'non-linear' if is_nonlinear else 'linear'} correlation ($r = {r_val:.2f}$) between both variables. "
+                        f"The scatter plot with regression line allows direct visualization of the trend."
+                    )
                 
             recommendations.append({
-                "chart_type": "scatter",
+                "chart_type": chart_type,
                 "title": title_text,
                 "x": col1,
                 "y": col2,
@@ -43,8 +67,8 @@ def recommend_charts(metadata: dict, bivariate_insights: list, lang: str = "es")
 
     # 2. Recommendations based on Temporal Trends (High Priority)
     temporal_cols = [col for col, meta in metadata.items() if meta["type"] == "Temporal"]
-    numeric_cols = [col for col, meta in metadata.items() if meta["type"] == "Quantitative"]
-    nominal_cols = [col for col, meta in metadata.items() if meta["type"] == "Nominal"]
+    numeric_cols = [col for col, meta in metadata.items() if meta["type"] == "Quantitative" and not meta.get("is_discrete", False)]
+    nominal_cols = [col for col, meta in metadata.items() if meta["type"] == "Nominal" or meta.get("is_discrete", False)]
     
     for t_col in temporal_cols:
         for n_col in numeric_cols:
@@ -74,39 +98,14 @@ def recommend_charts(metadata: dict, bivariate_insights: list, lang: str = "es")
                 "priority": 85
             })
 
-    # 3. Recommendations based on Group Mean Differences (Categorical vs Numeric)
+    # 3. Recommendations based on Group Mean Differences (Categorical/Discrete vs Numeric)
     for insight in bivariate_insights:
         if insight["type"] == "aggregation":
             col_cat, col_num = insight["cols"]
             cardinality = metadata[col_cat]["n_distinct"]
             
             if cardinality <= 15:
-                if lang == "es":
-                    title_agg = f"Promedio de {col_num} por Categoría de {col_cat}"
-                    rationale_agg = (
-                        f"Compara los valores agregados (promedios) de la variable numérica *'{col_num}'* "
-                        f"segmentados por el campo categórico *'{col_cat}'*. "
-                        f"Permite comprobar qué grupos sobresalen respecto al promedio general."
-                    )
-                else:
-                    title_agg = f"Average of {col_num} by {col_cat} Category"
-                    rationale_agg = (
-                        f"Compares the aggregated values (means) of the numerical variable *'{col_num}'* "
-                        f"segmented by the categorical field *'{col_cat}'*. "
-                        f"Allows verifying which groups stand out compared to the overall average."
-                    )
-                    
-                recommendations.append({
-                    "chart_type": "bar_aggregation",
-                    "title": title_agg,
-                    "x": col_cat,
-                    "y": col_num,
-                    "color_by": col_cat,
-                    "rationale": rationale_agg,
-                    "insights": [insight["text"]],
-                    "priority": 70
-                })
-                
+                # Segmented Boxplot: Priority 75 (High Priority to preserve variance)
                 if lang == "es":
                     title_box = f"Distribución de {col_num} dentro de cada {col_cat}"
                     rationale_box = (
@@ -127,18 +126,46 @@ def recommend_charts(metadata: dict, bivariate_insights: list, lang: str = "es")
                     "title": title_box,
                     "x": col_cat,
                     "y": col_num,
-                    "color_by": col_cat,
+                    "color_by": col_cat if metadata[col_cat]["type"] == "Nominal" else None,
                     "rationale": rationale_box,
                     "insights": [insight_box],
-                    "priority": 65
+                    "priority": 75
                 })
 
-    # 4. Univariate Recommendations (1 Numeric Variable)
-    for col in numeric_cols:
+                # Bar Aggregation: Priority 60 (Lowered from 70 to protect against "dynamite plots")
+                if lang == "es":
+                    title_agg = f"Promedio de {col_num} por Categoría de {col_cat}"
+                    rationale_agg = (
+                        f"Compara los valores agregados (promedios) de la variable numérica *'{col_num}'* "
+                        f"segmentados por el campo *'{col_cat}'*. "
+                        f"Permite comprobar qué grupos sobresalen respecto al promedio general."
+                    )
+                else:
+                    title_agg = f"Average of {col_num} by {col_cat} Category"
+                    rationale_agg = (
+                        f"Compares the aggregated values (means) of the numerical variable *'{col_num}'* "
+                        f"segmented by the categorical field *'{col_cat}'*. "
+                        f"Allows verifying which groups stand out compared to the overall average."
+                    )
+                    
+                recommendations.append({
+                    "chart_type": "bar_aggregation",
+                    "title": title_agg,
+                    "x": col_cat,
+                    "y": col_num,
+                    "color_by": col_cat if metadata[col_cat]["type"] == "Nominal" else None,
+                    "rationale": rationale_agg,
+                    "insights": [insight["text"]],
+                    "priority": 60
+                })
+
+    # 4. Univariate Recommendations (Numeric Variables)
+    for col in [c for c, m in metadata.items() if m["type"] == "Quantitative"]:
         meta = metadata[col]
         stats = meta.get("stats", {})
         skewness = stats.get("skewness", 0)
         
+        # Continuous gets higher priority histogram, discrete might get other shapes, but we keep it robust
         if lang == "es":
             title_hist = f"Distribución de {col}"
             rationale_hist = (
@@ -191,13 +218,34 @@ def recommend_charts(metadata: dict, bivariate_insights: list, lang: str = "es")
             "priority": 45
         })
 
-    # 5. Univariate Recommendations (1 Categorical Variable)
+    # 5. Univariate Recommendations (Categorical Variables and Discrete Numerics)
     for col in nominal_cols:
         meta = metadata[col]
         cardinality = meta["n_distinct"]
         
-        if cardinality <= 15:
-            chart_t = "pie" if cardinality <= 5 else "bar_frequency"
+        # Use horizontal bars when cardinality exceeds 12 to prevent overlapping axis labels.
+        if cardinality <= 3 and meta["type"] == "Nominal":
+            # Only recommend pie charts for tiny nominal sets (<=3 groups), Priority 30
+            if lang == "es":
+                title_nom = f"Proporciones de {col}"
+                rationale_nom = f"Muestra la participación proporcional de las {cardinality} categorías de *'{col}'*."
+            else:
+                title_nom = f"Proportions of {col}"
+                rationale_nom = f"Shows the proportional share of the {cardinality} categories in *'{col}'*."
+                
+            recommendations.append({
+                "chart_type": "pie",
+                "title": title_nom,
+                "x": col,
+                "y": None,
+                "color_by": col,
+                "rationale": rationale_nom,
+                "insights": meta["insights"],
+                "priority": 30
+            })
+            
+        # Standard bar frequency for categories
+        if cardinality <= 12:
             if lang == "es":
                 title_nom = f"Distribución de Categorías en {col}"
                 rationale_nom = (
@@ -212,16 +260,17 @@ def recommend_charts(metadata: dict, bivariate_insights: list, lang: str = "es")
                 )
                 
             recommendations.append({
-                "chart_type": chart_t,
+                "chart_type": "bar_frequency",
                 "title": title_nom,
                 "x": col,
                 "y": None,
-                "color_by": col if chart_t == "pie" else None,
+                "color_by": None,
                 "rationale": rationale_nom,
                 "insights": meta["insights"],
                 "priority": 40
             })
         else:
+            # High cardinality gets horizontal bar
             if lang == "es":
                 title_nom_high = f"Frecuencias de {col} (Alta Cardinalidad)"
                 rationale_nom_high = (
