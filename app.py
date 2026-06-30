@@ -153,14 +153,17 @@ with st.sidebar:
             
             for col, meta in st.session_state.metadata.items():
                 current_type = meta["type"]
+                is_discrete = meta.get("is_discrete", False)
                 options = ["Quantitative", "Nominal", "Temporal"]
                 try:
                     selected_idx = options.index(current_type)
                 except ValueError:
                     selected_idx = 1 # Nominal default fallback
-                    
+
+                # Show a discrete badge so the user understands the internal typing
+                discrete_badge = " 🔢 *(Discreta)*" if is_discrete else ""
                 new_type = st.selectbox(
-                    f"{T[lang_code]['summary_col']}: {col}",
+                    f"{T[lang_code]['summary_col']}: {col}{discrete_badge}",
                     options=options,
                     index=selected_idx,
                     key=f"type_select_{col}"
@@ -392,8 +395,14 @@ else:
         compatible_charts = []
         default_chart = ""
         
+        is_x_discrete = st.session_state.metadata[x_manual].get("is_discrete", False)
+
         if type_y == "Ninguno":
-            if type_x == "Quantitative":
+            if type_x == "Quantitative" and is_x_discrete:
+                # Discrete numeric (e.g. Rating 1-5): bar chart makes sense to count per value
+                compatible_charts = [chart_names["Gráfico de Barras"], chart_names["Histograma"], chart_names["Box Plot"]]
+                default_chart = chart_names["Gráfico de Barras"]
+            elif type_x == "Quantitative":
                 compatible_charts = [chart_names["Histograma"], chart_names["Box Plot"]]
                 default_chart = chart_names["Histograma"]
             elif type_x == "Nominal":
