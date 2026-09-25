@@ -1,3 +1,9 @@
+> **⚠️ Archived / Archivado**
+>
+> This project is no longer maintained.
+>
+> Este proyecto ya no se mantiene.
+
 # PlotThis 📊
 
 [![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
